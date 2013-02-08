@@ -895,13 +895,13 @@ enum cpuacct_stat_index {
 };
 
 
-//#define sched_class_highest (&stop_sched_class) //port from 2.6.36 RTWS
-#define sched_class_highest (&rtws_sched_class)
+#define sched_class_highest (&stop_sched_class) //port from 2.6.36 RTWS
+//define sched_class_highest (&rtws_sched_class)
 #define for_each_class(class) \
    for (class = sched_class_highest; class; class = class->next)
 
-extern const struct sched_class rtws_sched_class;
 extern const struct sched_class stop_sched_class;
+extern const struct sched_class rtws_sched_class;
 extern const struct sched_class rt_sched_class;
 extern const struct sched_class fair_sched_class;
 extern const struct sched_class idle_sched_class;
