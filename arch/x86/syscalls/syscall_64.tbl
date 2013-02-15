@@ -318,6 +318,10 @@
 309	common	getcpu			sys_getcpu
 310	64	process_vm_readv	sys_process_vm_readv
 311	64	process_vm_writev	sys_process_vm_writev
+312     64      __NR_sched_setscheduler_ex      sys_sched_setscheduler_ex
+314     64      __NR_sched_delay_until_rtws  sys_sched_delay_until_rtws
+315     64      __NR_sched_setpolicies_rtws sys_sched_setpolicies_rtws
+316     64      __NR_sched_flush_stats_rtws  sys_sched_flush_stats_rtws
 #
 # x32-specific system call numbers start at 512 to avoid cache impact
 # for native 64-bit operation.

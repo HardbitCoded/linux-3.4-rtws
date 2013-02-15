@@ -4267,7 +4267,11 @@ __checkparam_rtws(const struct sched_param_ex *prm, bool kthread)
         return false;
 
     //if (prm->sched_flags & SF_HEAD)
-        //return kthread;
+    //return kthread;
+
+    printk("sched_deadline= %lld\n", timespec_to_ns(&prm->sched_deadline));
+    printk("sched_period= %lld\n", timespec_to_ns(&prm->sched_period));
+    printk("sched_runtime =%lld\n", timespec_to_ns(&prm->sched_runtime));
 
     return timespec_to_ns(&prm->sched_deadline) != 0 &&
            (timespec_to_ns(&prm->sched_period) == 0 ||
@@ -4318,6 +4322,8 @@ recheck:
         reset_on_fork = !!(policy & SCHED_RESET_ON_FORK);
         policy &= ~SCHED_RESET_ON_FORK;
 
+        printk("Policy in __sched_setscheduler = %d\n",policy);
+
         if (policy != SCHED_RTWS && policy != SCHED_FIFO && policy != SCHED_RR &&
                 policy != SCHED_NORMAL && policy != SCHED_BATCH &&
                 policy != SCHED_IDLE)
@@ -4329,6 +4335,8 @@ recheck:
      * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
      * SCHED_BATCH and SCHED_IDLE is 0.
      */
+    printk("Sched prio = %d\n",param->sched_priority);
+
     if (param->sched_priority < 0 ||
         (p->mm && param->sched_priority > MAX_USER_RT_PRIO-1) ||
         (!p->mm && param->sched_priority > MAX_RT_PRIO-1))
@@ -4343,8 +4351,18 @@ recheck:
          *
          * The struct param_ex is null for all policies but SCHED_RTWS.
          */
-        if ((rtws_policy(policy) && !__checkparam_rtws(param_ex, !p->mm)) || rt_policy(policy) != (param->sched_priority != 0))
-        return -EINVAL;
+    printk("rtwspolicy = %d && ", rtws_policy(policy));
+    printk("__checkparam = %d\n", !__checkparam_rtws(param_ex, !p->mm));
+    printk("||\n");
+    printk("rt_policy(policy)= %d != ", rt_policy(policy));
+    printk("param->schedprio= %d\n",param->sched_priority);
+        if ((rtws_policy(policy) && !__checkparam_rtws(param_ex, !p->mm)) ||
+                rt_policy(policy) != (param->sched_priority != 0))
+        {
+            printk("If fodido... \n");
+            return -EINVAL;
+
+        }
 
     /*
      * Allow unprivileged RT tasks to decrease priority:
@@ -4402,6 +4420,7 @@ recheck:
      */
     if (p == rq->stop) {
         task_rq_unlock(rq, p, &flags);
+        printk("no if rq->stop\n");
         return -EINVAL;
     }
 
@@ -4556,7 +4575,10 @@ do_sched_setscheduler_ex(pid_t pid, int policy, unsigned len,
     struct sched_param_ex lparam_ex;
     struct task_struct *p;
     int retval;
-
+    printk("pid = %d\n",pid);
+    printk("policy = %d\n", policy);
+    printk("len = %d\n",len);
+    printk("Size of p = %d\n",sizeof(lparam_ex));
     if (!param_ex || pid < 0)
         return -EINVAL;
     if (len > sizeof(lparam_ex))
