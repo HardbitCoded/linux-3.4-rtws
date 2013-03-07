@@ -319,7 +319,7 @@ static inline struct rq *__task_rq_lock(struct task_struct *p)
 /*
  * task_rq_lock - lock p->pi_lock and lock the rq @p resides on.
  */
-static struct rq *task_rq_lock(struct task_struct *p, unsigned long *flags)
+struct rq *task_rq_lock(struct task_struct *p, unsigned long *flags)
     __acquires(p->pi_lock)
     __acquires(rq->lock)
 {
@@ -342,7 +342,7 @@ static void __task_rq_unlock(struct rq *rq)
     raw_spin_unlock(&rq->lock);
 }
 
-static inline void
+void
 task_rq_unlock(struct rq *rq, struct task_struct *p, unsigned long *flags)
     __releases(rq->lock)
     __releases(p->pi_lock)
@@ -1741,6 +1741,7 @@ static void __sched_fork(struct task_struct *p)
     INIT_LIST_HEAD(&p->rt.run_list);
     /* Port RTWS*/
     /* DOUBT: do groups alter my pjobs scheduling methodology? */
+
     p->rtws.nr_pjobs = 0;
     p->rtws.stats.tot_runtime = 0;
     RB_CLEAR_NODE(&p->rtws.task_node);
@@ -1794,6 +1795,7 @@ void sched_fork(struct task_struct *p)
         p->sched_reset_on_fork = 0;
     }
 
+
     if (rtws_prio(p->prio)) {
             p->sched_class = &rtws_sched_class;
 
@@ -1805,7 +1807,7 @@ void sched_fork(struct task_struct *p)
              * Otherwise new process is a new task which must respect its own
              * scheduling parameters.
              */
-            if (flags & CLONE_THREAD) {
+            if (p->flags & CLONE_THREAD) {
                 current->rtws.nr_pjobs++;
                 if (p->rtws.parent)
                     p->rtws.parent = current->rtws.parent;
@@ -3382,7 +3384,6 @@ need_resched:
 
     if (unlikely(!rq->nr_running))
         idle_balance(cpu, rq);
-
     put_prev_task(rq, prev);
     next = pick_next_task(rq);
     clear_tsk_need_resched(prev);
@@ -3393,9 +3394,10 @@ need_resched:
         rq->curr = next;
         ++*switch_count;
 
-        if (unlikely(__rtws_task(prev) || __rtws_task(next)))
+        if (unlikely(__rtws_task(prev) || __rtws_task(next))){
             rq->rtws.tot_cs++;
-
+            printk(KERN_INFO "RTWS context switches = %ld", rq->rtws.tot_cs);
+        }
         context_switch(rq, prev, next); /* unlocks the rq */
         /*
          * The context switch have flipped the stack from under us
@@ -3405,9 +3407,13 @@ need_resched:
          */
         cpu = smp_processor_id();
         rq = cpu_rq(cpu);
-    } else
+    } else{
         raw_spin_unlock_irq(&rq->lock);
-
+        if(__rtws_task(prev)||__rtws_task(next)){
+        if(prev==NULL) printk(KERN_INFO "prev is null");
+        if(next==NULL) printk(KERN_INFO "next is null");
+        }
+    }
     post_schedule(rq);
 
     sched_preempt_enable_no_resched();
@@ -4238,7 +4244,7 @@ __setparam_rtws(struct task_struct *p, const struct sched_param_ex *param_ex)
 {
     struct sched_rtws_entity *rtws_se = &p->rtws;
 
-    //printk(KERN_INFO "task %d, dl %llu, period %llu, runtime %llu\n", p->pid, timespec_to_ns(&param_ex->sched_deadline), timespec_to_ns(&param_ex->sched_period), timespec_to_ns(&param_ex->sched_runtime));
+    printk(KERN_INFO "task %d, dl %llu, period %llu, runtime %llu\n", p->pid, timespec_to_ns(&param_ex->sched_deadline), timespec_to_ns(&param_ex->sched_period), timespec_to_ns(&param_ex->sched_runtime));
 
     init_timer_rtws(rtws_se);
     rtws_se->rtws_deadline = timespec_to_ns(&param_ex->sched_deadline);
@@ -4269,9 +4275,7 @@ __checkparam_rtws(const struct sched_param_ex *prm, bool kthread)
     //if (prm->sched_flags & SF_HEAD)
     //return kthread;
 
-    printk("sched_deadline= %lld\n", timespec_to_ns(&prm->sched_deadline));
-    printk("sched_period= %lld\n", timespec_to_ns(&prm->sched_period));
-    printk("sched_runtime =%lld\n", timespec_to_ns(&prm->sched_runtime));
+
 
     return timespec_to_ns(&prm->sched_deadline) != 0 &&
            (timespec_to_ns(&prm->sched_period) == 0 ||
@@ -4322,8 +4326,6 @@ recheck:
         reset_on_fork = !!(policy & SCHED_RESET_ON_FORK);
         policy &= ~SCHED_RESET_ON_FORK;
 
-        printk("Policy in __sched_setscheduler = %d\n",policy);
-
         if (policy != SCHED_RTWS && policy != SCHED_FIFO && policy != SCHED_RR &&
                 policy != SCHED_NORMAL && policy != SCHED_BATCH &&
                 policy != SCHED_IDLE)
@@ -4335,7 +4337,6 @@ recheck:
      * 1..MAX_USER_RT_PRIO-1, valid priority for SCHED_NORMAL,
      * SCHED_BATCH and SCHED_IDLE is 0.
      */
-    printk("Sched prio = %d\n",param->sched_priority);
 
     if (param->sched_priority < 0 ||
         (p->mm && param->sched_priority > MAX_USER_RT_PRIO-1) ||
@@ -4351,15 +4352,10 @@ recheck:
          *
          * The struct param_ex is null for all policies but SCHED_RTWS.
          */
-    printk("rtwspolicy = %d && ", rtws_policy(policy));
-    printk("__checkparam = %d\n", !__checkparam_rtws(param_ex, !p->mm));
-    printk("||\n");
-    printk("rt_policy(policy)= %d != ", rt_policy(policy));
-    printk("param->schedprio= %d\n",param->sched_priority);
         if ((rtws_policy(policy) && !__checkparam_rtws(param_ex, !p->mm)) ||
                 rt_policy(policy) != (param->sched_priority != 0))
         {
-            printk("If fodido... \n");
+
             return -EINVAL;
 
         }
@@ -4420,7 +4416,6 @@ recheck:
      */
     if (p == rq->stop) {
         task_rq_unlock(rq, p, &flags);
-        printk("no if rq->stop\n");
         return -EINVAL;
     }
 
@@ -4575,10 +4570,6 @@ do_sched_setscheduler_ex(pid_t pid, int policy, unsigned len,
     struct sched_param_ex lparam_ex;
     struct task_struct *p;
     int retval;
-    printk("pid = %d\n",pid);
-    printk("policy = %d\n", policy);
-    printk("len = %d\n",len);
-    printk("Size of p = %d\n",sizeof(lparam_ex));
     if (!param_ex || pid < 0)
         return -EINVAL;
     if (len > sizeof(lparam_ex))
@@ -4628,14 +4619,16 @@ SYSCALL_DEFINE1(sched_delay_until_rtws,
     unsigned long flags;
     struct task_struct *p = current;
     struct sched_rtws_entity *rtws_se = &p->rtws;
-    struct rq *rq = task_rq_lock(p, &flags);
     u64 wakeup;
     long ret = 0;
+    struct rq *rq = task_rq_lock(p, &flags);
+    printk(KERN_INFO "Lock RQ aquired!!!\n");
 
     /* Only "root" tasks have periodic behaviour. */
     if (unlikely(rtws_se->parent)) {
         ret = -EINVAL;
         goto unlock;
+
     }
 
     /*
@@ -4646,22 +4639,22 @@ SYSCALL_DEFINE1(sched_delay_until_rtws,
         wakeup = get_next_activation_period(rtws_se);
         goto activate;
     }
-
     /* We allow tasks to wake up before or after its next activation period */
     wakeup = timespec_to_ns(release);
 
-    //printk(KERN_INFO "--wake up %llu rq clock %llu, task %d on cpu %d--\n", wakeup, rq->clock, p->pid, rq->cpu);
+    printk(KERN_INFO "--wake up %llu rq clock %llu, task %d on cpu %d--\n", wakeup, rq->clock, p->pid, rq->cpu);
 
 activate:
     rtws_se->job.release = wakeup;
 
     if (deadline_missed_rtws(rq, rtws_se)) {
-        //printk(KERN_INFO "missed deadline\n");
+        printk(KERN_INFO "missed deadline!!!\n");
         deactivate_task(rq, p, 0);
         update_task_rtws(rq, rtws_se);
         activate_task(rq, p, 0);
         ret = 1;
     } else {
+        printk(KERN_INFO "deadline not missed\n");
         deactivate_task(rq, p, 0);
         rtws_se->throttled = 1;
         start_timer_rtws(rq, rtws_se);
@@ -4669,10 +4662,12 @@ activate:
     }
 
     resched_task(rq->curr);
+    printk(KERN_INFO "After resched\n");
 unlock:
-    task_rq_unlock(rq,p,&flags);
-
-    return ret;
+   task_rq_unlock(rq,p,&flags);
+   printk(KERN_INFO "Lock released!!!\n");
+   printk(KERN_INFO "Returning %ll\n",ret);
+   return ret;
 }
 
 /**

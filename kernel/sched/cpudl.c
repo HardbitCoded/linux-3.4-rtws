@@ -107,7 +107,7 @@ int find_idle_cpu_rtws(struct cpudl *cp)
 {
     int best_cpu = -1;
 
-    //printk(KERN_INFO "size %d cpus %d\n", cp->size, num_present_cpus());
+    printk( KERN_INFO "size %d cpus %d\n", cp->size, num_present_cpus());
 
     best_cpu = cpumask_any(cp->free_cpus);
 
@@ -121,7 +121,7 @@ int find_latest_cpu_rtws(struct cpudl *cp)
 {
     int best_cpu = -1;
 
-    //printk(KERN_INFO "size %d cpus %d\n", cp->size, num_present_cpus());
+    printk(KERN_INFO "size %d cpus %d\n", cp->size, num_present_cpus());
 
     if (cp->size > 0)
         best_cpu = cpudl_maximum(cp);

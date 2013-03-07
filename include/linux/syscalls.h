@@ -864,6 +864,6 @@ asmlinkage long sys_sched_setscheduler_ex(pid_t pid,
 asmlinkage long sys_sched_delay_until_rtws(const struct timespec __user * release);
 asmlinkage long sched_setpolicies_rtws(pid_t pid,
                                        int helpfirst,int randomized);
-
+asmlinkage long sys_sched_flush_stats_rtws(void);
 
 #endif

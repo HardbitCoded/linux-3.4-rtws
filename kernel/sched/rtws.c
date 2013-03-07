@@ -17,25 +17,8 @@
 #include "sched.h"
 #include "rtws.h"
 
-static inline struct rq *task_rq_lock(struct task_struct *p)
-{
-    struct rq *rq;
 
-    lockdep_assert_held(&p->pi_lock);
 
-    for (;;) {
-        rq = task_rq(p);
-        raw_spin_lock(&rq->lock);
-        if (likely(rq == task_rq(p)))
-            return rq;
-        raw_spin_unlock(&rq->lock);
-    }
-}
-
-static void task_rq_unlock(struct rq *rq)
-{
-    raw_spin_unlock(&rq->lock);
-}
 u64 get_next_activation_period(struct sched_rtws_entity *rtws_se)
 {
     return rtws_se->job.deadline + rtws_se->rtws_period - rtws_se->rtws_deadline;
@@ -119,7 +102,6 @@ static void
 check_preempt_curr_rtws(struct rq *rq, struct task_struct *p, int flags);
 static void __dequeue_task_rtws(struct global_rq *global_rq, struct sched_rtws_entity *rtws_se);
 static void enqueue_pjob_rtws(struct rq *rq, struct task_struct *p, int flags);
-//static void update_task_rtws(struct rq *rq, struct sched_rtws_entity *rtws_se);
 static int dispatch_rtws(struct rq *rq, struct task_struct *p);
 static void __enqueue_task_rtws(struct global_rq *global_rq, struct sched_rtws_entity *rtws_se);
 static int steal_pjob_rtws(struct rq *rq);
@@ -150,7 +132,7 @@ void start_timer_rtws(struct rq *rq, struct sched_rtws_entity *rtws_se)
 
     soft = hrtimer_get_softexpires(&rtws_se->timer);
     hard = hrtimer_get_expires(&rtws_se->timer);
-    //printk(KERN_INFO "expire: %Ld, soft: %Ld, hard: %Ld\n", ktime_to_ns(act), ktime_to_ns(soft), ktime_to_ns(hard));
+    printk(KERN_INFO "expire: %Ld, soft: %Ld, hard: %Ld\n", ktime_to_ns(act), ktime_to_ns(soft), ktime_to_ns(hard));
     range = ktime_to_ns(ktime_sub(hard, soft));
     __hrtimer_start_range_ns(&rtws_se->timer, soft,
                  range, HRTIMER_MODE_ABS, 0);
@@ -168,11 +150,9 @@ static enum hrtimer_restart timer_rtws(struct hrtimer *timer)
                              timer);
 
     struct task_struct *p = task_of_rtws_se(rtws_se);
-    //struct rq *rq = task_rq_lock(p, &flags);
-    struct rq *rq = task_rq_lock(p);
+    struct rq *rq = task_rq_lock(p, &flags);
 
-
-    //printk(KERN_INFO "**task %d state %ld on rq %d timer fired at time %Ld on cpu %d**\n", p->pid, p->state, p->se.on_rq, rq->clock, rq->cpu);
+    printk(KERN_INFO "**task %d state %ld on rq %d timer fired at time %Ld on cpu %d**\n", p->pid, p->state, p->se.on_rq, rq->clock, rq->cpu);
 
     /*
      * We need to take care of a possible races here. In fact, the
@@ -202,7 +182,7 @@ static enum hrtimer_restart timer_rtws(struct hrtimer *timer)
     resched_task(rq->curr);
 
 unlock:
-    task_rq_unlock(rq);
+    task_rq_unlock(rq,p,&flags);
 
     return HRTIMER_NORESTART;
 }
@@ -263,7 +243,7 @@ static void push_task_rtws(struct rq *rq, struct task_struct *p, int preempted)
     if (preempted)
         deactivate_task(rq, p, 0);
 
-    //printk(KERN_INFO "****global enqueue, task %d on cpu %d *******\n", p->pid, rq->cpu);
+    printk(KERN_INFO "****global enqueue, task %d on cpu %d *******\n", p->pid, rq->cpu);
 
     raw_spin_lock(&global_rq->lock);
     __enqueue_task_rtws(global_rq, &p->rtws);
@@ -288,7 +268,7 @@ static int pull_task_rtws(struct rq *this_rq)
     p = task_of_rtws_se(rtws_se);
     WARN_ON(!rtws_task(p));
 
-    //printk(KERN_INFO "= task %d stolen %d PULLED by cpu %d\n", p->pid, rtws_se->stolen, this_rq->cpu);
+    printk(KERN_INFO "= task %d stolen %d PULLED by cpu %d\n", p->pid, rtws_se->stolen, this_rq->cpu);
 
     /*
      * We tranfer the task from global rq to this rq
@@ -327,7 +307,7 @@ void inc_pjobs_rtws(struct rtws_rq *rtws_rq, struct sched_rtws_entity *rtws_se)
         cpudl_set(&rq->rd->rtwsc_cpudl, rq->cpu, deadline, rtws_se->stolen, 1);
         smp_wmb();
     }
-    //printk(KERN_INFO "enqueing task %d stolen %d on cpu %d, current deadline %llu, remaining tasks %lu\n", p->pid, rtws_se->stolen, rq->cpu, rtws_rq->earliest_dl, rtws_rq->nr_running);
+    printk(KERN_INFO "enqueing task %d stolen %d on cpu %d, current deadline %llu, remaining tasks %lu\n", p->pid, rtws_se->stolen, rq->cpu, rtws_rq->earliest_dl, rtws_rq->nr_running);
 }
 
 static
@@ -396,7 +376,7 @@ void dec_pjobs_rtws(struct rtws_rq *rtws_rq, struct sched_rtws_entity *rtws_se)
             smp_wmb();
         }
     }
-    //printk(KERN_INFO "dequeing task %d on cpu %d, current deadline %llu, remaining tasks %lu\n", p->pid, rq->cpu, rtws_rq->earliest_dl, rtws_rq->nr_running);
+    printk(KERN_INFO "dequeing task %d on cpu %d, current deadline %llu, remaining tasks %lu\n", p->pid, rq->cpu, rtws_rq->earliest_dl, rtws_rq->nr_running);
 }
 
 /*
@@ -453,7 +433,7 @@ static void enqueue_stealable_pjob_rtws(struct rtws_rq *rtws_rq, struct sched_rt
 
     BUG_ON(!RB_EMPTY_NODE(&rtws_se->stealable_pjob_node));
 
-    //printk(KERN_INFO "****stealable pjob enqueue, task %d ****\n", p->pid);
+    printk(KERN_INFO "****stealable pjob enqueue, task %d ****\n", p->pid);
 
     /* TODO: Optimization in case enqueueing task is next edf */
 
@@ -505,7 +485,7 @@ static void dequeue_stealable_pjob_rtws(struct rtws_rq *rtws_rq, struct sched_rt
     if (RB_EMPTY_NODE(&rtws_se->stealable_pjob_node))
         return;
 
-    //printk(KERN_INFO "****stealable pjob dequeue, task %d ****\n", p->pid);
+    printk(KERN_INFO "****stealable pjob dequeue, task %d ****\n", p->pid);
 
     if (rtws_rq->leftmost_stealable_pjob == &rtws_se->stealable_pjob_node) {
         struct rb_node *next_node;
@@ -599,7 +579,7 @@ static int steal_pjob_rtws(struct rq *this_rq)
     if (target_cpu == -1)
         return 0;
 
-    //printk(KERN_INFO "stealable cpu %d\n", target_cpu);
+    printk(KERN_INFO "stealable cpu %d\n", target_cpu);
 
     target_rq = cpu_rq(target_cpu);
 
@@ -633,7 +613,7 @@ static int steal_pjob_rtws(struct rq *this_rq)
         activate_task(this_rq, p, 0);
 
         this_rq->rtws.tot_steals++;
-        //printk(KERN_INFO "=task %d STOLEN by cpu %d from cpu %d!\n", p->pid, this_cpu, target_cpu);
+        printk(KERN_INFO "=task %d STOLEN by cpu %d from cpu %d!\n", p->pid, this_cpu, target_cpu);
         ret = 1;
     }
 
@@ -658,7 +638,7 @@ retry:
     if (target_cpu == -1)
         return 0;
 
-    //printk(KERN_INFO "idle cpu %d\n", target_cpu);
+    printk(KERN_INFO "idle cpu %d\n", target_cpu);
 
     target_rq = cpu_rq(target_cpu);
 
@@ -708,7 +688,7 @@ static int push_latest_rtws(struct rq *this_rq, struct task_struct *p, int targe
     /* We might release rq lock */
     get_task_struct(p);
 
-    //printk(KERN_INFO "check preempting other %llu - %llu\n", p->rtws.job.deadline, target_rq->rtws.earliest_dl);
+    printk(KERN_INFO "check preempting other %llu - %llu\n", p->rtws.job.deadline, target_rq->rtws.earliest_dl);
 
     double_lock_balance(this_rq, target_rq);
 
@@ -734,7 +714,7 @@ static int dispatch_rtws(struct rq *rq, struct task_struct *p)
     struct sched_rtws_entity *edf;
     int target_cpu;
     struct cpudl *cp = &rq->rd->rtwsc_cpudl;
-    //printk(KERN_INFO "dispatching\n");
+    printk(KERN_INFO "dispatching\n");
 
     edf = __pick_next_task_rtws(rq->rtws.global_rq);
 
@@ -746,10 +726,10 @@ static int dispatch_rtws(struct rq *rq, struct task_struct *p)
 
     target_cpu = find_latest_cpu_rtws(cp);
 
-    //printk(KERN_INFO "latest cpu %d\n", target_cpu);
+    printk(KERN_INFO "latest cpu %d\n", target_cpu);
 
     if (target_cpu == rq->cpu) {
-        //printk(KERN_INFO "check preempting itself %llu - %llu\n", p->rtws.job.deadline, rq->rtws.earliest_dl);
+        printk(KERN_INFO "check preempting itself %llu - %llu\n", p->rtws.job.deadline, rq->rtws.earliest_dl);
         if (rq->rtws.nr_running && !time_before_rtws(p->rtws.job.deadline, rq->rtws.earliest_dl))
             goto global;
 
@@ -796,7 +776,7 @@ void update_task_rtws(struct rq *rq, struct sched_rtws_entity *rtws_se)
     atomic_inc(&rtws_se->job.nr);
 
     rtws_se->job.deadline = rq->clock + rtws_se->rtws_deadline;
-    //printk(KERN_INFO "****update task, task %d new dl %Ld****\n", p->pid, rtws_se->job.deadline);
+    printk(KERN_INFO "****update task, task %d new dl %Ld****\n", p->pid, rtws_se->job.deadline);
 }
 
 
@@ -809,7 +789,7 @@ int deadline_missed_rtws(struct rq *rq, struct sched_rtws_entity *rtws_se)
     if (rtws_se->parent)
         return 0;
 
-    //printk(KERN_INFO "****dl miss, dl %Lu clock %Lu****\n", rtws_se->job.deadline, rq->clock);
+    printk(KERN_INFO "****dl miss, dl %Lu clock %Lu****\n", rtws_se->job.deadline, rq->clock);
 
     dmiss = time_before_rtws(rtws_se->job.release, rq->clock);
 
@@ -915,6 +895,7 @@ static void
 enqueue_task_rtws(struct rq *rq, struct task_struct *p, int flags)
 {
     struct sched_rtws_entity *rtws_se = &p->rtws;
+    printk("Begin enqueue_task_rtws\n");
 
     /*
      * If p is throttled, we do nothing. In fact, to admitted back this task,
@@ -923,7 +904,7 @@ enqueue_task_rtws(struct rq *rq, struct task_struct *p, int flags)
     if (rtws_se->throttled)
         return;
 
-    //printk(KERN_INFO "***original enqueue, running %lu task %d pjobs %lu state %lu on cpu %d***\n", rq->rtws.nr_running, p->pid, p->rtws.nr_pjobs, p->state, rq->cpu);
+    printk(KERN_INFO "***original enqueue, running %lu task %d pjobs %lu state %lu on cpu %d***\n", rq->rtws.nr_running, p->pid, p->rtws.nr_pjobs, p->state, rq->cpu);
 
     /*if (p->state == TASK_RUNNING && rtws_se->parent && rq->rtws.nr_running) {
         printk(KERN_INFO "fork stealing\n");
@@ -944,14 +925,17 @@ enqueue_task_rtws(struct rq *rq, struct task_struct *p, int flags)
     }*/
 
     enqueue_pjob_rtws(rq, p, flags);
+    printk("End enqueue_task_rtws\n");
 }
 
 static void
 dequeue_task_rtws(struct rq *rq, struct task_struct *p, int sleep)
 {
-    //printk(KERN_INFO "********original dequeue, task %d state %lu on cpu %d*******\n", p->pid, p->state, rq->cpu);
+    printk("Begin dequeue_task_rtws\n");
+    printk(KERN_INFO "********original dequeue, task %d state %lu on cpu %d*******\n", p->pid, p->state, rq->cpu);
 
     dequeue_pjob_rtws(rq, p);
+    printk("End dequeue_task_rtws\n");
 }
 
 /*
@@ -961,7 +945,8 @@ dequeue_task_rtws(struct rq *rq, struct task_struct *p, int sleep)
 static void
 check_preempt_curr_rtws(struct rq *rq, struct task_struct *p, int flags)
 {
-    //printk("********check preempt curr, task %d on cpu %d*******\n",p->pid, rq->cpu);
+    printk("Begin preempt_curr_rtws\n");
+    printk("********check preempt curr, task %d on cpu %d*******\n",p->pid, rq->cpu);
     /*if (dl_task(p)) {
         resched_task(rq->curr);
         return;
@@ -969,18 +954,19 @@ check_preempt_curr_rtws(struct rq *rq, struct task_struct *p, int flags)
 
     if (!is_leftmost_pjob(&rq->rtws, &rq->curr->rtws))
         resched_task(rq->curr);
+    printk("End preempt_curr_rtws\n");
 }
 
 static struct task_struct *
 pick_next_task_rtws(struct rq *rq)
 {
+
     struct sched_rtws_entity *rtws_se;
     struct task_struct *next;
     struct rtws_rq *rtws_rq = &rq->rtws;
     struct global_rq *global_rq = rtws_rq->global_rq;
     int ret;
-
-    /* TODO: if new pjobs spawn after we get a null here, we wont be aware of them until next pick round */
+        /* TODO: if new pjobs spawn after we get a null here, we wont be aware of them until next pick round */
     if (!rtws_rq->nr_running) {
         raw_spin_lock(&global_rq->lock);
         ret = pull_task_rtws(rq);
@@ -997,7 +983,7 @@ pick_next_task_rtws(struct rq *rq)
     next = task_of_rtws_se(rtws_se);
     next->se.exec_start = rq->clock;
 
-    //printk(KERN_INFO "picking task %d on rq %d....\n", next->pid, rq->cpu);
+    printk(KERN_INFO "picking task %d on rq %d....\n", next->pid, rq->cpu);
     /* Running task will never be stolen. */
     dequeue_stealable_pjob_rtws(rtws_rq, rtws_se);
 
@@ -1012,8 +998,8 @@ put_prev_task_rtws(struct rq *rq, struct task_struct *prev)
     struct sched_rtws_entity *rtws_se = &prev->rtws;
     struct global_rq *global_rq = rq->rtws.global_rq;
     int migrate = 0;
-
-    //printk(KERN_INFO "********put prev task, task %d on cpu %d stolen %d running %lu*******\n",prev->pid, rq->cpu, rtws_se->stolen, rq->rtws.nr_running);
+    //printk("Begin put_prev_task_rtws\n");
+    printk(KERN_INFO "********put prev task, task %d on cpu %d stolen %d running %lu*******\n",prev->pid, rq->cpu, rtws_se->stolen, rq->rtws.nr_running);
 
     update_curr_rtws(rq);
     prev->se.exec_start = 0;
@@ -1026,7 +1012,7 @@ put_prev_task_rtws(struct rq *rq, struct task_struct *prev)
      * By forcing pjob=0, we make sure this pjob ends up on global rq, thus becoming able
      * to preempt other cores or to be selected on the 2nd highest priority picking up phase.
      * */
-    //printk(KERN_INFO ":D\n");
+    printk(KERN_INFO ":D\n");
     if (rtws_se->stolen != -1)
         migrate = 1;
 
@@ -1046,12 +1032,13 @@ put_prev_task_rtws(struct rq *rq, struct task_struct *prev)
                 trace_sched_task_stat_rtws_earliest(prev, rq->clock);
         }
     }
-*/
+    */
+    //printk("End put_prev_task_rtws\n");
 }
 
 #ifdef CONFIG_SMP
 
-static int select_task_rq_rtws(struct rq *rq, struct task_struct *p, int sd_flag, int flags)
+static int select_task_rq_rtws(struct task_struct *p, int sd_flag, int flags)
 {
     //printk("********select task rq, task %d of cpu %d on cpu %d*******\n",p->pid, task_cpu(p), smp_processor_id());
     return task_cpu(p);
@@ -1063,7 +1050,7 @@ static void
 set_curr_task_rtws(struct rq *rq)
 {
     struct task_struct *p = rq->curr;
-    //printk(KERN_INFO "********set curr task, task %d on cpu %d*******\n", rq->curr->pid, rq->cpu);
+    printk(KERN_INFO "********set curr task, task %d on cpu %d*******\n", rq->curr->pid, rq->cpu);
 
     update_task_rtws(rq, &p->rtws);
     p->se.exec_start = rq->clock;
@@ -1079,7 +1066,7 @@ static void task_fork_rtws(struct task_struct *p)
 {
     struct sched_rtws_entity *rtws_se = &p->rtws;
 
-    //printk(KERN_INFO "********task fork, task %d parent %d *******\n", p->pid, rtws_se->parent ? 1 : 0);
+    printk(KERN_INFO "RTWS task_fork ********task fork, task %d parent %d *******\n", p->pid, rtws_se->parent ? 1 : 0);
 
     if (!rtws_se->parent) {
         /*
@@ -1088,6 +1075,7 @@ static void task_fork_rtws(struct task_struct *p)
          * must call sched_setscheduler_ex() on it, or it won't even
          * start.
          */
+        printk(KERN_INFO "RTWS task_fork entity is not parent...");
 
         /* DOUBT: can't we just cancel timers for both pjobs and task,
          * once init_timer_rtws() will be called on new tasks? */
@@ -1096,23 +1084,26 @@ static void task_fork_rtws(struct task_struct *p)
         rtws_se->rtws_deadline = rtws_se->job.deadline = 0;
         rtws_se->rtws_period = 0;
         rtws_se->throttled = 1;
-    } else
+    } else{
+        printk(KERN_INFO "RTWS task_fork entity is parent...");
         hrtimer_try_to_cancel(&rtws_se->timer);
+    }
+    printk(KERN_INFO "RTWS task_fork End of function...");
 }
 
 static void
-switched_from_rtws(struct rq *rq, struct task_struct *p, int running)
+switched_from_rtws(struct rq *rq, struct task_struct *p)
 {
-    //printk(KERN_INFO "********switch from, task %d on cpu %d*******\n", rq->curr->pid, rq->cpu);
+    printk(KERN_INFO "********switch from, task %d on cpu %d*******\n", rq->curr->pid, rq->cpu);
 
     if (hrtimer_active(&p->rtws.timer) && !rtws_policy(p->policy))
         hrtimer_try_to_cancel(&p->rtws.timer);
 }
 
 static void
-switched_to_rtws(struct rq *rq, struct task_struct *p, int running)
+switched_to_rtws(struct rq *rq, struct task_struct *p)
 {
-    //printk(KERN_INFO "********switch to, task %d running %d on cpu %d*******\n",p->pid, running, rq->cpu);
+    printk(KERN_INFO "********switch to, task %d on cpu %d*******\n",p->pid, rq->cpu);
 
     /*
      * If p is throttled, don't consider the possibility
@@ -1121,7 +1112,7 @@ switched_to_rtws(struct rq *rq, struct task_struct *p, int running)
     if (unlikely(p->rtws.throttled))
         return;
 
-    if (!running)
+   // if (!running)
         check_preempt_curr_rtws(rq, p, 0);
 }
 
@@ -1135,12 +1126,13 @@ switched_to_rtws(struct rq *rq, struct task_struct *p, int running)
  */
 static void
 prio_changed_rtws(struct rq *rq, struct task_struct *p,
-                  int oldprio, int running)
+                  int oldprio)
 {
-    //rq != task_rq(p)
-    /*struct sched_rtws_entity *rtws_se = &p->rtws;
 
-    printk(KERN_INFO "********prio changed, task %d pjob %d running %d on cpu %d*******\n",p->pid, rtws_se->pjob, running, rq->cpu);
+    //rq != task_rq(p)
+    struct sched_rtws_entity *rtws_se = &p->rtws;
+
+    printk(KERN_INFO "********prio changed, task %d pjob %d on cpu %d*******\n",p->pid, rtws_se->job, rq->cpu);
 
     if (rtws_se->parent || rtws_se->nr_pjobs > 0) {
         printk(KERN_INFO "problems...\n");
@@ -1150,15 +1142,15 @@ prio_changed_rtws(struct rq *rq, struct task_struct *p,
         return;
     }
 
-    if (running)*/
+    //if (running)
         /*
          * We don't know if p has a earlier
          * or later deadline, so let's blindly set a
          * (maybe not needed) rescheduling point.
          */
-        /*resched_task(p);
-    else
-        switched_to_rtws(rq, p, running);*/
+        resched_task(p);
+    //else
+    //    switched_to_rtws(rq, p, running);
 }
 
 const struct sched_class rtws_sched_class = {
