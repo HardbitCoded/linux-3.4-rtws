@@ -4259,6 +4259,7 @@ __setparam_rtws(struct task_struct *p, const struct sched_param_ex *param_ex)
     /* DOUBT: maybe a flag instead? */
     rtws_se->help_first = 1;
     rtws_se->parent = NULL;
+    rtws_se->throttled = 0;
 
     atomic_set(&rtws_se->job.nr, 0);
 
@@ -4767,6 +4768,7 @@ SYSCALL_DEFINE0(sched_flush_stats_rtws)
         raw_spin_unlock_irqrestore(&rq->lock, flags);
         rcu_read_unlock();
     }
+    printk("RTWS:: Flushed stats.....");
 
     return 0;
 }

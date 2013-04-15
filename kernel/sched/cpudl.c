@@ -107,7 +107,7 @@ int find_idle_cpu_rtws(struct cpudl *cp)
 {
     int best_cpu = -1;
 
-    printk( KERN_INFO "size %d cpus %d\n", cp->size, num_present_cpus());
+    printk( KERN_INFO "RTWS :: size %d cpus %d\n", cp->size, num_present_cpus());
 
     best_cpu = cpumask_any(cp->free_cpus);
 
@@ -121,7 +121,7 @@ int find_latest_cpu_rtws(struct cpudl *cp)
 {
     int best_cpu = -1;
 
-    printk(KERN_INFO "size %d cpus %d\n", cp->size, num_present_cpus());
+    printk(KERN_INFO "RTWS :: size %d cpus %d\n", cp->size, num_present_cpus());
 
     if (cp->size > 0)
         best_cpu = cpudl_maximum(cp);
@@ -147,8 +147,8 @@ int find_random_stealable_cpu_rtws(struct cpudl *cp, int cpu)
 
     if (best_cpu >= num_present_cpus())
         best_cpu = -1;
-    //else
-        //printk(KERN_INFO "size %d cpus %d\n", cp->size, num_present_cpus());
+    else
+        printk(KERN_INFO "RTWS :: size %d cpus %d\n", cp->size, num_present_cpus());
 
     return best_cpu;
 }
@@ -191,7 +191,7 @@ void cpudl_set(struct cpudl *cp, int cpu, u64 dl, int stolen, int is_valid)
     WARN_ON(cpu >= num_present_cpus());
     raw_spin_lock_irqsave(&cp->lock, flags);
     old_idx = cp->cpu_to_idx[cpu];
-    //printk(KERN_INFO "index %d old index %d parent %d, cpu %d\n", cp->cpu_to_idx[cpu], old_idx, old_idx > 0 ? parent(old_idx) : -1, cpu);
+    printk(KERN_INFO "RTWS :: index %d old index %d parent %d, cpu %d\n", cp->cpu_to_idx[cpu], old_idx, old_idx > 0 ? parent(old_idx) : -1, cpu);
     if (!is_valid) {
         /* remove item */
         new_cpu = cp->elements[cp->size - 1].cpu;
@@ -216,7 +216,7 @@ void cpudl_set(struct cpudl *cp, int cpu, u64 dl, int stolen, int is_valid)
                     cpudl_heapify(cp, old_idx, 1);
 
         cpumask_set_cpu(cpu, cp->free_cpus);
-        //printk(KERN_INFO "rm size %d index %d cpu %d\n", cp->size, cp->cpu_to_idx[cpu], cpu);
+        printk(KERN_INFO "RTWS :: rm size %d index %d cpu %d\n", cp->size, cp->cpu_to_idx[cpu], cpu);
         goto out;
     }
 
@@ -231,7 +231,7 @@ void cpudl_set(struct cpudl *cp, int cpu, u64 dl, int stolen, int is_valid)
 
         cpudl_change_key(cp, cp->size - 1, dl, stolen);
 
-        //printk(KERN_INFO "add size %d index %d cpu %d\n", cp->size, cp->cpu_to_idx[cpu], cpu);
+        printk(KERN_INFO "RTWS :: add size %d index %d cpu %d\n", cp->size, cp->cpu_to_idx[cpu], cpu);
     } else {
         /* edit item */
         if (cp->elements[old_idx].dl != dl)
